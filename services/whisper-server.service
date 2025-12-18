@@ -1,0 +1,16 @@
+[Unit]
+Description=WhisperLive Transcription Server
+After=network.target
+
+[Service]
+Type=simple
+User=sekachev
+WorkingDirectory=/home/sekachev/Documents/whipser/WhisperLive
+Environment=CUDA_VISIBLE_DEVICES=1
+Environment=LD_LIBRARY_PATH=/home/sekachev/Documents/whipser/WhisperLive/venv/lib/python3.13/site-packages/nvidia/cudnn/lib:/home/sekachev/Documents/whipser/WhisperLive/venv/lib/python3.13/site-packages/nvidia/cublas/lib
+ExecStart=/home/sekachev/Documents/whipser/WhisperLive/venv/bin/python3 run_server.py --port 9099 --backend faster_whisper --model turbo
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,13 @@
+[Unit]
+Description=Ydotool Daemon
+After=network.target
+
+[Service]
+Type=simple
+User=sekachev
+ExecStartPre=/usr/bin/sudo /usr/bin/chmod 0666 /dev/uinput
+ExecStart=/usr/bin/ydotoold --socket-path=/tmp/ydotool.socket
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
