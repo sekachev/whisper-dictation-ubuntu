@@ -1,14 +1,17 @@
 # Whisper Dictation for Ubuntu (GNOME/Wayland)
 
-Этот проект превращает [WhisperLive](https://github.com/CollaboraOnline/WhisperLive) в полноценный системный сервис для Ubuntu с поддержкой глобальной диктовки по горячей клавише. 
+This project turns [WhisperLive](https://github.com/CollaboraOnline/WhisperLive) into a full-fledged system service for Ubuntu with global dictation support via a hotkey.
 
-## Особенности
-- **Глобальная диктовка**: Работает в любом приложении (Chrome, Telegram, IDE).
-- **Живой вывод**: Текст печатается сразу, как только вы говорите.
-- **Предзагрузка модели**: Сервер держит модель в памяти для мгновенного старта.
-- **Интеграция с GNOME**: Удобное переключение одной кнопкой.
+## Features
+- **Global Dictation**: Works in any application (Chrome, Telegram, IDE).
+- **Live Output**: Text is typed immediately as you speak.
+- **Background Loading**: The server keeps the model in memory for instant response.
+- **Always-on Client**: Minimal startup delay, status indicated via a system tray icon.
+- **System Tray Integration**:
+  - **Grey Circle**: Standby mode.
+  - **Red Circle**: Recording mode.
 
-## Установка
+## Installation
 
 ```bash
 git clone https://github.com/sekachev/whisper-dictation-ubuntu.git
@@ -17,27 +20,28 @@ chmod +x install.sh
 ./install.sh
 ```
 
-## Настройка горячей клавиши
+## Hotkey Configuration
 
-1. Откройте **Settings** -> **Keyboard** -> **View and Customize Shortcuts**.
-2. В самом низу выберите **Custom Shortcuts**.
-3. Нажмите **+** и введите:
+1. Open **Settings** -> **Keyboard** -> **View and Customize Shortcuts**.
+2. Select **Custom Shortcuts** at the bottom.
+3. Click **+** and enter:
    - **Name**: Whisper Dictation
-   - **Command**: `/bin/bash /путь/к/проекту/WhisperLive/toggle_dictation.sh`
-   - **Shortcut**: Любая удобная клавиша (например, `Super + D`).
+   - **Command**: `/bin/bash /path/to/project/WhisperLive/scripts/toggle_dictation.sh`
+   - **Shortcut**: Any convenient key (e.g., `Super + D`).
 
-## Управление сервисом
+## Service Management
 
-Сервер транскрипции работает как системный сервис:
+The transcription server runs as a system service:
 
-- Проверить статус: `sudo systemctl status whisper-server`
-- Посмотреть логи (живое логгирование): `journalctl -u whisper-server -f`
-- Перезагрузить: `sudo systemctl restart whisper-server`
+- Check status: `sudo systemctl status whisper-server`
+- View logs (real-time): `journalctl -u whisper-server -f`
+- Restart: `sudo systemctl restart whisper-server`
 
-## Технические детали
-- Используется библиотека `evdev` для имитации нажатий клавиш (минуя ограничения Wayland).
-- Для работы в Chrome используется автоматическая вставка через буфер обмена (`Ctrl+V`).
-- По умолчанию используется модель `turbo`.
+## Technical Details
+- Uses the `evdev` library for hardware-level key simulation (bypassing Wayland restrictions).
+- Uses clipboard paste (`Ctrl+V`) for fast and reliable text insertion in browsers like Chrome.
+- Default model: `turbo`.
+- Status icon is drawn programmatically (no external asset files required).
 
 ---
-*Основано на репозитории [WhisperLive](https://github.com/CollaboraOnline/WhisperLive).*
+*Based on the [WhisperLive](https://github.com/CollaboraOnline/WhisperLive) repository.*
