@@ -37,6 +37,9 @@ The transcription server runs as a system service:
 - View logs (real-time): `journalctl -u whisper-server -f`
 - Restart: `sudo systemctl restart whisper-server`
 
+To completely stop the tray client:
+- Run `./scripts/stop_dictation.sh`
+
 ## Technical Details
 - Uses the `evdev` library for hardware-level key simulation (bypassing Wayland restrictions).
 - Uses clipboard paste (`Ctrl+V`) for fast and reliable text insertion in browsers like Chrome.
