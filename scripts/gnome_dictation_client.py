@@ -87,7 +87,7 @@ class GNOMELiveTypist:
         ]
         
         # Команды управления
-        list_start_cmds = ["новый список", "начать список", "start list", "список"]
+        list_start_cmds = ["новый список", "начать список", "start list"]
         list_end_cmds = ["конец списка", "закончить список", "end list", "стоп список"]
         enter_cmds = ["новая строка", "enter", "энтер", "перенос строки", "new line"]
 
