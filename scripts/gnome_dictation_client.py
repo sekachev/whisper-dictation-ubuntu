@@ -107,20 +107,44 @@ class GNOMELiveTypist:
 
         self.currently_typed = target_text
 
+import signal
+
 def main():
+    # Save original clipboard content
+    original_clipboard = None
+    try:
+        original_clipboard = pyperclip.paste()
+        print("[INFO]: Original clipboard saved.")
+    except Exception as e:
+        print(f"[WARNING]: Could not save clipboard: {e}")
+
     typist = GNOMELiveTypist()
+    
+    def restore_clipboard(signum=None, frame=None):
+        if original_clipboard is not None:
+            print("\n[INFO]: Restoring original clipboard...")
+            pyperclip.copy(original_clipboard)
+        sys.exit(0)
+
+    # Register signal handlers for graceful termination (e.g., from toggle_dictation.sh)
+    signal.signal(signal.SIGTERM, restore_clipboard)
+    signal.signal(signal.SIGINT, restore_clipboard)
+
     client = TranscriptionClient(
         "localhost", 9099,
         lang=None, model="turbo",
         transcription_callback=typist.on_transcription,
         log_transcription=False,
-        send_last_n_segments=2000 # Запрашиваем все сегменты, чтобы префикс не терялся
+        send_last_n_segments=2000
     )
+    
     print("[INFO]: Dictation started (evdev mode). Speak now!")
     try:
         client()
-    except KeyboardInterrupt:
-        print("\n[INFO]: Stopping...")
+    except Exception as e:
+        print(f"[ERROR]: {e}")
+    finally:
+        restore_clipboard()
 
 if __name__ == "__main__":
     main()
