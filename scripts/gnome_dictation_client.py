@@ -87,8 +87,8 @@ class GNOMELiveTypist:
         ]
         
         # Команды управления
-        list_start_cmds = ["новый список", "начать список", "start list", "начало списка", "режим списка"]
-        list_end_cmds = ["конец списка", "закончить список", "end list", "завершить список", "выйти из списка"]
+        list_start_cmds = ["новый список", "начать список", "start list", "список"]
+        list_end_cmds = ["конец списка", "закончить список", "end list", "стоп список"]
         enter_cmds = ["новая строка", "enter", "энтер", "перенос строки", "new line"]
 
         def process_text_part(txt, list_mode_state):
@@ -188,8 +188,6 @@ class GNOMELiveTypist:
         
         if text_to_add:
             self.paste_text(text_to_add)
-
-        self.currently_typed = target_text
 
         self.currently_typed = target_text
 
