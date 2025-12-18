@@ -133,8 +133,41 @@ class GNOMELiveTypist:
                 break
         
         # 3. Формируем целевой текст только из "активных" сегментов
-        active_parts = [s["text"].strip() for s in valid_segments[lock_until_idx:]]
-        target_text = " ".join(active_parts)
+        # Добавляем распознавание голосовых команд для Enter
+        voice_commands = {
+            "новая строка": "\n",
+            "новая строка.": "\n",
+            "перенос": "\n",
+            "enter": "\n",
+            "new line": "\n",
+            "new line.": "\n",
+            "новый абзац": "\n\n",
+            "новый абзац.": "\n\n",
+            "new paragraph": "\n\n",
+            "new paragraph.": "\n\n"
+        }
+
+        active_parts = []
+        for s in valid_segments[lock_until_idx:]:
+            txt = s["text"].strip()
+            # Проверяем, не является ли сегмент командой (игнорируем регистр)
+            cmd_key = txt.lower()
+            if cmd_key in voice_commands:
+                active_parts.append(voice_commands[cmd_key])
+                print(f"[DEBUG]: Voice command recognized: '{txt}' -> Enter")
+            else:
+                active_parts.append(txt)
+        
+        # Умная склейка: не добавляем пробелы вокруг переносов строк
+        target_text = ""
+        for i, part in enumerate(active_parts):
+            if part in ["\n", "\n\n"]:
+                target_text += part
+            else:
+                # Если это не первый элемент и перед ним не было переноса строки - добавляем пробел
+                if target_text and not target_text.endswith(("\n", "\n\n")):
+                    target_text += " "
+                target_text += part
         
         if not target_text and not self.currently_typed:
             return
@@ -155,7 +188,7 @@ class GNOMELiveTypist:
         text_to_add = target_text[common_prefix_len:]
         
         if chars_to_delete > 0 or text_to_add:
-            print(f"[DEBUG]: Diff - Delete: {chars_to_delete}, Add: '{text_to_add}'")
+            print(f"[DEBUG]: Diff - Delete: {chars_to_delete}, Add (len {len(text_to_add)}): '{text_to_add.replace(chr(10), ' [ENTER] ')}'")
 
         if chars_to_delete > 0:
             # Ограничиваем удаление, чтобы случайно не "вылететь" за границу заморозки
