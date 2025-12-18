@@ -137,7 +137,6 @@ class GNOMELiveTypist:
         voice_commands = {
             "новая строка": "\n",
             "новая строка.": "\n",
-            "перенос": "\n",
             "enter": "\n",
             "new line": "\n",
             "new line.": "\n",
