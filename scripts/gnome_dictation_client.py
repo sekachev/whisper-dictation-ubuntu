@@ -26,6 +26,7 @@ class GNOMELiveTypist:
             
         self.currently_typed = ""
         self.last_locked_time = 0
+        self.is_list_mode = False
 
     def press_keys(self, keys):
         # Нажимаем все клавиши в списке
@@ -85,6 +86,21 @@ class GNOMELiveTypist:
             "субтитры подготовил"
         ]
         
+        # Команды управления
+        list_start_cmds = ["новый список", "начать список", "start list", "начало списка", "режим списка"]
+        list_end_cmds = ["конец списка", "закончить список", "end list", "завершить список", "выйти из списка"]
+        enter_cmds = ["новая строка", "enter", "энтер", "перенос строки", "new line"]
+
+        def process_text_part(txt, list_mode_state):
+            t_lower = txt.lower().strip().rstrip(".")
+            if t_lower in list_start_cmds:
+                return "\n- ", True
+            if t_lower in list_end_cmds:
+                return "\n", False
+            if t_lower in enter_cmds:
+                return ("\n- " if list_mode_state else "\n"), list_mode_state
+            return txt, list_mode_state
+
         # 1. Фильтруем сегменты от галлюцинаций
         valid_segments = []
         for seg in segments:
@@ -98,14 +114,11 @@ class GNOMELiveTypist:
             return
 
         # 2. Определяем границу "заморозки" (stability window)
-        # Все, что старше 3 секунд от самого нового сегмента, помечаем как Locked
         current_max_time = float(valid_segments[-1].get("end", 0))
         
         lock_until_idx = 0
         for i, seg in enumerate(valid_segments):
             end_t = float(seg.get("end", 0))
-            # Условие заморозки: сегмент завершен И он старше (max_time - 3.0)
-            # ИЛИ это очень старый сегмент (на всякий случай, если окно сервера ушло далеко)
             if end_t <= self.last_locked_time:
                 lock_until_idx = i + 1
                 continue
@@ -113,58 +126,39 @@ class GNOMELiveTypist:
             if seg.get("completed", False) and end_t < (current_max_time - 3.0):
                 lock_until_idx = i + 1
                 
-                # Обновляем наш внутренний буфер: "забываем" про этот текст
-                text_to_lock = seg["text"].strip()
+                # Текст сегмента и его трансформация в "бетон"
+                text_raw = seg["text"].strip()
+                text_transformed, next_list_mode = process_text_part(text_raw, self.is_list_mode)
                 
-                # Мы ищем этот текст в начале нашего буфера и отрезаем его
-                if self.currently_typed.startswith(text_to_lock):
-                    # Отрезаем текст и возможный пробел за ним
-                    self.currently_typed = self.currently_typed[len(text_to_lock):].lstrip()
+                # Ищем этот текст в начале нашего буфера и отрезаем его
+                if self.currently_typed.startswith(text_transformed):
+                    self.currently_typed = self.currently_typed[len(text_transformed):].lstrip(" ")
                     self.last_locked_time = end_t
-                    print(f"[DEBUG]: Locking segment: '{text_to_lock}'. New baseline len: {len(self.currently_typed)}")
+                    self.is_list_mode = next_list_mode
+                    print(f"[DEBUG]: Locking: '{text_transformed.replace(chr(10), ' [ENT] ')}'. Mode: {self.is_list_mode}")
                 else:
-                    # Если текст почему-то не совпал (редко), просто сбрасываем буфер
-                    # Это предотвратит попытку удаления "замороженного" текста
                     self.currently_typed = ""
                     self.last_locked_time = end_t
-                    print(f"[DEBUG]: Desync in locking '{text_to_lock}', resetting baseline.")
+                    self.is_list_mode = next_list_mode
+                    print(f"[DEBUG]: Desync in locking, reset baseline. Mode: {self.is_list_mode}")
             else:
-                # Как только нашли первый незавершенный или "молодой" сегмент - стоп
                 break
         
-        # 3. Формируем целевой текст только из "активных" сегментов
-        # Добавляем распознавание голосовых команд для Enter
-        voice_commands = {
-            "новая строка": "\n",
-            "новая строка.": "\n",
-            "enter": "\n",
-            "new line": "\n",
-            "new line.": "\n",
-            "новый абзац": "\n\n",
-            "новый абзац.": "\n\n",
-            "new paragraph": "\n\n",
-            "new paragraph.": "\n\n"
-        }
-
+        # 3. Формируем активный текст с учетом команд
+        current_active_mode = self.is_list_mode
         active_parts = []
         for s in valid_segments[lock_until_idx:]:
-            txt = s["text"].strip()
-            # Проверяем, не является ли сегмент командой (игнорируем регистр)
-            cmd_key = txt.lower()
-            if cmd_key in voice_commands:
-                active_parts.append(voice_commands[cmd_key])
-                print(f"[DEBUG]: Voice command recognized: '{txt}' -> Enter")
-            else:
-                active_parts.append(txt)
+            txt_raw = s["text"].strip()
+            txt_transformed, current_active_mode = process_text_part(txt_raw, current_active_mode)
+            active_parts.append(txt_transformed)
         
-        # Умная склейка: не добавляем пробелы вокруг переносов строк
+        # Умная склейка
         target_text = ""
-        for i, part in enumerate(active_parts):
-            if part in ["\n", "\n\n"]:
+        for part in active_parts:
+            if part.startswith("\n"):
                 target_text += part
             else:
-                # Если это не первый элемент и перед ним не было переноса строки - добавляем пробел
-                if target_text and not target_text.endswith(("\n", "\n\n")):
+                if target_text and not target_text.endswith(("\n", "- ", " ")):
                     target_text += " "
                 target_text += part
         
@@ -174,7 +168,7 @@ class GNOMELiveTypist:
         if target_text == self.currently_typed:
             return
 
-        # 4. Стандартная дифференциальная печать (только для активной зоны)
+        # 4. Дифференциальная печать
         common_prefix_len = 0
         min_len = min(len(target_text), len(self.currently_typed))
         for i in range(min_len):
@@ -187,17 +181,15 @@ class GNOMELiveTypist:
         text_to_add = target_text[common_prefix_len:]
         
         if chars_to_delete > 0 or text_to_add:
-            print(f"[DEBUG]: Diff - Delete: {chars_to_delete}, Add (len {len(text_to_add)}): '{text_to_add.replace(chr(10), ' [ENTER] ')}'")
+            print(f"[DEBUG]: Diff - Del: {chars_to_delete}, Add: '{text_to_add.replace(chr(10), ' [ENT] ')}'")
 
         if chars_to_delete > 0:
-            # Ограничиваем удаление, чтобы случайно не "вылететь" за границу заморозки
-            if chars_to_delete > 200: 
-                 print(f"[WARNING]: Unusual deletion size ({chars_to_delete}). Limiting.")
-                 chars_to_delete = 200
             self.backspace(chars_to_delete)
         
         if text_to_add:
             self.paste_text(text_to_add)
+
+        self.currently_typed = target_text
 
         self.currently_typed = target_text
 
