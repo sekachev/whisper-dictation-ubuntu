@@ -25,6 +25,7 @@ class GNOMELiveTypist:
             sys.exit(1)
             
         self.currently_typed = ""
+        self.last_locked_time = 0
 
     def press_keys(self, keys):
         # Нажимаем все клавиши в списке
@@ -45,14 +46,13 @@ class GNOMELiveTypist:
                 self.press_keys([e.KEY_BACKSPACE])
                 time.sleep(0.005)
         else:
-            # Для большого количества (но не всего текста) тоже можно было бы оптимизировать, 
-            # но пока оставим так или используем clear_all если это весь текст
+            # Для большого количества тоже используем бэкспейс, но чуть быстрее
             for _ in range(count):
                 self.press_keys([e.KEY_BACKSPACE])
-                time.sleep(0.002) # Ускоряем для больших пачек
+                time.sleep(0.002)
 
     def clear_all(self):
-        # Нажимаем Ctrl + A и затем Backspace
+        # Эта функция больше не используется для предотвращения полной очистки поля
         self.press_keys([e.KEY_LEFTCTRL, e.KEY_A])
         time.sleep(0.02)
         self.press_keys([e.KEY_BACKSPACE])
@@ -70,12 +70,79 @@ class GNOMELiveTypist:
         time.sleep(0.02)
 
     def on_transcription(self, full_text, segments):
-        # Используем full_text, который сервер уже склеил с пробелами
-        target_text = full_text
+        # Список галлюцинаций
+        hallucinations = [
+            "продолжение следует", 
+            "продолжение следует...",
+            "благодарю за внимание",
+            "спасибо за просмотр",
+            "подписывайтесь на канал",
+            "thanks for watching",
+            "subtitles by",
+            "субтитры сделал dimatorzok",
+            "субтитры подготовил dimatorzok",
+            "субтитры сделал",
+            "субтитры подготовил"
+        ]
         
-        if not target_text or target_text == self.currently_typed:
+        # 1. Фильтруем сегменты от галлюцинаций
+        valid_segments = []
+        for seg in segments:
+            t = seg["text"].strip()
+            if t.lower() in hallucinations:
+                print(f"[DEBUG]: Hallucination ignored: '{t}'")
+                continue
+            valid_segments.append(seg)
+            
+        if not valid_segments:
             return
 
+        # 2. Определяем границу "заморозки" (stability window)
+        # Все, что старше 3 секунд от самого нового сегмента, помечаем как Locked
+        current_max_time = float(valid_segments[-1].get("end", 0))
+        
+        lock_until_idx = 0
+        for i, seg in enumerate(valid_segments):
+            end_t = float(seg.get("end", 0))
+            # Условие заморозки: сегмент завершен И он старше (max_time - 3.0)
+            # ИЛИ это очень старый сегмент (на всякий случай, если окно сервера ушло далеко)
+            if end_t <= self.last_locked_time:
+                lock_until_idx = i + 1
+                continue
+                
+            if seg.get("completed", False) and end_t < (current_max_time - 3.0):
+                lock_until_idx = i + 1
+                
+                # Обновляем наш внутренний буфер: "забываем" про этот текст
+                text_to_lock = seg["text"].strip()
+                
+                # Мы ищем этот текст в начале нашего буфера и отрезаем его
+                if self.currently_typed.startswith(text_to_lock):
+                    # Отрезаем текст и возможный пробел за ним
+                    self.currently_typed = self.currently_typed[len(text_to_lock):].lstrip()
+                    self.last_locked_time = end_t
+                    print(f"[DEBUG]: Locking segment: '{text_to_lock}'. New baseline len: {len(self.currently_typed)}")
+                else:
+                    # Если текст почему-то не совпал (редко), просто сбрасываем буфер
+                    # Это предотвратит попытку удаления "замороженного" текста
+                    self.currently_typed = ""
+                    self.last_locked_time = end_t
+                    print(f"[DEBUG]: Desync in locking '{text_to_lock}', resetting baseline.")
+            else:
+                # Как только нашли первый незавершенный или "молодой" сегмент - стоп
+                break
+        
+        # 3. Формируем целевой текст только из "активных" сегментов
+        active_parts = [s["text"].strip() for s in valid_segments[lock_until_idx:]]
+        target_text = " ".join(active_parts)
+        
+        if not target_text and not self.currently_typed:
+            return
+            
+        if target_text == self.currently_typed:
+            return
+
+        # 4. Стандартная дифференциальная печать (только для активной зоны)
         common_prefix_len = 0
         min_len = min(len(target_text), len(self.currently_typed))
         for i in range(min_len):
@@ -87,19 +154,14 @@ class GNOMELiveTypist:
         chars_to_delete = len(self.currently_typed) - common_prefix_len
         text_to_add = target_text[common_prefix_len:]
         
-        # Log for debugging
-        print(f"[DEBUG]: Typed len: {len(self.currently_typed)}, Target len: {len(target_text)}, Common: {common_prefix_len}, To delete: {chars_to_delete}, To add: '{text_to_add}'")
-
-        # Если изменений слишком много, стираем всё через Ctrl+A
-        if chars_to_delete > 100:
-            print(f"[DEBUG]: Threshold 100 exceeded! Clearing all ({len(self.currently_typed)} chars) and re-pasting")
-            self.clear_all()
-            self.currently_typed = ""
-            self.paste_text(target_text)
-            self.currently_typed = target_text
-            return
+        if chars_to_delete > 0 or text_to_add:
+            print(f"[DEBUG]: Diff - Delete: {chars_to_delete}, Add: '{text_to_add}'")
 
         if chars_to_delete > 0:
+            # Ограничиваем удаление, чтобы случайно не "вылететь" за границу заморозки
+            if chars_to_delete > 200: 
+                 print(f"[WARNING]: Unusual deletion size ({chars_to_delete}). Limiting.")
+                 chars_to_delete = 200
             self.backspace(chars_to_delete)
         
         if text_to_add:
